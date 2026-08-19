@@ -27,7 +27,7 @@ ALL_SPLITS = ["train", "valid", "test"]
 
 # Patch extraction (same values as the original dataprocessing.py)
 IMG_SIZE = 128
-STRIDE = 200
+STRIDE = 128
 
 H5_NAME = f"Snow_{PAIR_NAME}_imgsize_{IMG_SIZE}_stride_{STRIDE}.h5"
 H5_PATH = os.path.join("data", H5_NAME)
