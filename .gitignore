@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+
+# Generated training data (the patch h5 is ~1.5 GB)
+data/
+
+# Checkpoints produced by train_snow.py (the two upstream pretrained
+# CDDFuse_IVF/MIF .pth files stay tracked)
+models/CDDFuse_snow_*
+models/*.tmp
+
+# Fusion + detection outputs
+test_result/
+runs/

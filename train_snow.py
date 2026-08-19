@@ -7,7 +7,7 @@ Import packages
 '''
 
 from net import Restormer_Encoder, Restormer_Decoder, BaseFeatureExtraction, DetailFeatureExtraction
-from utils.dataset import H5Dataset
+from snow_dataset import InMemoryH5
 import os
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 import sys
@@ -38,7 +38,7 @@ epoch_gap = 40  # epoches of Phase I
 
 lr = 1e-4
 weight_decay = 0
-batch_size = 8
+batch_size = 16
 GPU_number = os.environ['CUDA_VISIBLE_DEVICES']
 # Coefficients of the loss function
 coeff_mse_loss_VF = 1. # alpha1
@@ -76,17 +76,58 @@ scheduler4 = torch.optim.lr_scheduler.StepLR(optimizer4, step_size=optim_step, g
 
 MSELoss = nn.MSELoss()
 L1Loss = nn.L1Loss()
-Loss_ssim = kornia.losses.SSIM(11, reduction='mean')
+_SSIMCls = getattr(kornia.losses, 'SSIMLoss', None) or kornia.losses.SSIM
+Loss_ssim = _SSIMCls(11, reduction='mean')
 
 
 # data loader
-trainloader = DataLoader(H5Dataset(C.H5_PATH),
+trainloader = DataLoader(InMemoryH5(C.H5_PATH),
                          batch_size=batch_size,
                          shuffle=True,
-                         num_workers=0)
+                         num_workers=0, pin_memory=True)
 
 loader = {'train': trainloader, }
 timestamp = datetime.datetime.now().strftime("%m-%d-%H-%M")
+
+# ---- resume support -------------------------------------------------------
+RESUME_PATH = os.path.join("models", "CDDFuse_snow_" + C.PAIR_NAME + "_last.pth")
+os.makedirs("models", exist_ok=True)
+
+
+def _save_ckpt(epoch):
+    """Atomic write: temp file + rename, so a kill mid-save can't corrupt it."""
+    state = {
+        'epoch': epoch,
+        'CDDF_Encoder': CDDF_Encoder.state_dict(),
+        'CDDF_Decoder': CDDF_Decoder.state_dict(),
+        'BaseFuseLayer': BaseFuseLayer.state_dict(),
+        'DetailFuseLayer': DetailFuseLayer.state_dict(),
+        'optimizer1': optimizer1.state_dict(), 'optimizer2': optimizer2.state_dict(),
+        'optimizer3': optimizer3.state_dict(), 'optimizer4': optimizer4.state_dict(),
+        'scheduler1': scheduler1.state_dict(), 'scheduler2': scheduler2.state_dict(),
+        'scheduler3': scheduler3.state_dict(), 'scheduler4': scheduler4.state_dict(),
+    }
+    tmp = RESUME_PATH + ".tmp"
+    torch.save(state, tmp)
+    os.replace(tmp, RESUME_PATH)
+
+
+start_epoch = 0
+if os.path.exists(RESUME_PATH) and os.environ.get("SNOW_RESUME", "1") == "1":
+    _ck = torch.load(RESUME_PATH, map_location=device)
+    CDDF_Encoder.load_state_dict(_ck['CDDF_Encoder'])
+    CDDF_Decoder.load_state_dict(_ck['CDDF_Decoder'])
+    BaseFuseLayer.load_state_dict(_ck['BaseFuseLayer'])
+    DetailFuseLayer.load_state_dict(_ck['DetailFuseLayer'])
+    optimizer1.load_state_dict(_ck['optimizer1']); optimizer2.load_state_dict(_ck['optimizer2'])
+    optimizer3.load_state_dict(_ck['optimizer3']); optimizer4.load_state_dict(_ck['optimizer4'])
+    scheduler1.load_state_dict(_ck['scheduler1']); scheduler2.load_state_dict(_ck['scheduler2'])
+    scheduler3.load_state_dict(_ck['scheduler3']); scheduler4.load_state_dict(_ck['scheduler4'])
+    start_epoch = _ck['epoch'] + 1
+    print("RESUMING from " + RESUME_PATH + " at epoch " + str(start_epoch))
+else:
+    print("starting fresh (no checkpoint at " + RESUME_PATH + ")")
+# ---------------------------------------------------------------------------
 
 '''
 ------------------------------------------------------------------------------
@@ -98,7 +139,7 @@ step = 0
 torch.backends.cudnn.benchmark = True
 prev_time = time.time()
 
-for epoch in range(num_epochs):
+for epoch in range(start_epoch, num_epochs):
     ''' train '''
     for i, (data_VIS, data_IR) in enumerate(loader['train']):
         data_VIS, data_IR = data_VIS.to(device), data_IR.to(device)
@@ -207,6 +248,8 @@ for epoch in range(num_epochs):
         optimizer3.param_groups[0]['lr'] = 1e-6
     if optimizer4.param_groups[0]['lr'] <= 1e-6:
         optimizer4.param_groups[0]['lr'] = 1e-6
+
+    _save_ckpt(epoch)
 
 if True:
     checkpoint = {
