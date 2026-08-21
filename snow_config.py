@@ -16,8 +16,8 @@ DATASET_ROOT = os.environ.get("SNOW_DATASET_ROOT", DEFAULT_DATASET_ROOT)
 
 # Modality roles. CDDFuse is a 2-input network: one image fills the "VIS" role
 # (the decoder's residual input) and one fills the "IR" role.
-MODALITY_VIS = "signal"
-MODALITY_IR = "range"
+MODALITY_VIS = os.environ.get("SNOW_MOD_VIS", "signal")
+MODALITY_IR = os.environ.get("SNOW_MOD_IR", "range")
 
 PAIR_NAME = f"{MODALITY_VIS}_{MODALITY_IR}"
 
